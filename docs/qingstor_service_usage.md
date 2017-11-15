@@ -18,203 +18,245 @@ import (
 
 Initialize the QingStor service with a configuration
 
-``` go
-qsService, _ := qs.Init(configuration)
+``` c++
+QingStorService::initService(strConfigPath);	
 ```
 
 List buckets
 
-``` go
-qsOutput, _ := qsService.ListBuckets(nil)
+``` c++
+//When list buckets
+//Then list buckets status code is 200
+QingStor::QsConfig qsConfig;
+	qsConfig.loadConfigFile(strConfigPath);
+	QingStorService qsService(qsConfig);
+	
+	ListBucketsInput input;
+	ScenarioScope<ListBucketsOutput> contextOutput;
+	//input.SetLocation("gd1");
 
-// Print the HTTP status code.
-// Example: 200
-fmt.Println(qs.IntValue(qsOutput.StatusCode))
+	QsError err = qsService.listBuckets(input, *contextOutput);
+	if (QsError::QS_ERR_NO_ERROR != err)
+	{
+		//context->result = (int)putObjectPropsOuput.GetResponseCode();
+	}
 
-// Print the bucket count.
-// Example: 5
-fmt.Println(qs.IntValue(qsOutput.Count))
-
-// Print the name of first bucket.
-// Example: "test-bucket"
-fmt.Println(qs.String(qsOutput.Buckets[0].Name))
+	qsService.listBuckets(input, *contextOutput);
 ```
 
 Initialize a QingStor bucket
 
-``` go
-bucket, _ := qsService.Bucket("test-bucket", "pek3a")
+``` c++
+QingStorService::initService(strConfigPath);
+	QingStor::QsConfig qsConfig;
+	qsConfig.loadConfigFile(strConfigPath);
+
+	ScenarioScope<TestBucketCtx> context;
+	context->pQsService = new QingStorService(qsConfig);
+	context->pQsBucket = new Bucket(qsConfig, "testmorvenhuang", "pek3a");
 ```
 
 List objects in the bucket
 
-``` go
-bOutput, _ := bucket.ListObjects(nil)
+``` c++
+//When list objects
+//Then list objects status code is 200
+//And list objects keys count is 0
+QingStor::QsConfig qsConfig;
+	qsConfig.loadConfigFile(strConfigPath);
+	QingStorService qsService(qsConfig);
+	Bucket qsBucket = qsService.GetBucket("testmorvenhuang", "pek3a");
 
-// Print the HTTP status code.
-// Example: 200
-fmt.Println(qs.IntValue(bOutput.StatusCode))
+	ListObjectsInput input;
+	ScenarioScope<ListObjectsOutput> contextOutput;
 
-// Print the key count.
-// Example: 7
-fmt.Println(len(bOutput.Keys))
+	QsError err = qsBucket.listObjects(input, *contextOutput);
 ```
 
-Set ACL of the bucket
+PUT ACL of the bucket
 
-``` go
-bACLOutput, _ := bucket.PutACL(&qs.PutBucketACLInput{
-	ACL: []*service.ACLType{{
-		Grantee: &service.GranteeType{
-			Type: qs.String("user"),
-			ID:   qs.String("usr-xxxxxxxx"),
-		},
-		Permission: qs.String("FULL_CONTROL"),
-	}},
-})
+``` c++
+//Scenario: set the bucket ACL
+//When put bucket ACL:
+//		  """
+//		  {
+//			  "acl": [
+//			  {
+//				  "grantee": {
+//					  "type": "group",
+//						  "name" : "QS_ALL_USERS"
+//				  },
+//				  "permission" : "FULL_CONTROL"
+//			  }
+//			  ]
+//		  }
+//		  """
+//Then put bucket ACL status code is 200
+QingStor::QsConfig qsConfig;
+	qsConfig.loadConfigFile(strConfigPath);
+	QingStorService qsService(qsConfig);
+	Bucket qsBucket = qsService.GetBucket("testmorvenhuang", "pek3a");
 
-// Print the HTTP status code.
-// Example: 200
-fmt.Println(qs.IntValue(bACLOutput.StatusCode))
+	PutBucketACLInput input;
+	ScenarioScope<PutBucketACLOutput> contextOutput;
+
+	std::vector<ACLType> aclList;
+	ACLType acl;
+	GranteeType grantee;
+
+	grantee.SetType("group");
+	grantee.SetName("QS_ALL_USERS");
+	acl.SetGrantee(grantee);
+	acl.SetPermission("FULL_CONTROL");
+
+	aclList.push_back(acl);
+	input.SetACL(aclList);
 ```
 
-Put object
+put object with key
 
-``` go
-// Open file
-file, _ := os.Open("/tmp/Screenshot.jpg")
-defer file.Close()
+``` c++
+// When put object with key "<key>"
+// Then put object status code is 201
+ScenarioScope<TestObjectCtx> contextObjectTest;
+	contextObjectTest->bucketName = "testmorvenhuang";
 
-// Calculate MD5
-hash := md5.New()
-io.Copy(hash, file)
-hashInBytes := hash.Sum(nil)[:16]
-md5String := hex.EncodeToString(hashInBytes)
+	QingStor::QsConfig qsConfig;
+	qsConfig.loadConfigFile(strConfigPath);
+	contextObjectTest->pQsBucket = new Bucket(qsConfig, "testmorvenhuang", "pek3a");
+	Bucket qsBucket = *contextObjectTest->pQsBucket;
 
-// Put object
-oOutput, _ := bucket.PutObject(
-	"Screenshot.jpg",
-	&service.PutObjectInput{
-		ContentLength: qs.Int(102475),          // Obtain automatically if empty
-		ContentType:   qs.String("image/jpeg"), // Detect automatically if empty
-		ContentMD5:    qs.String(md5String),
-		Body:          file,
-	},
-)
+	PutObjectInput input;
+	ScenarioScope<PutObjectOutput> contextOutput;
 
-// Print the HTTP status code.
-// Example: 201
-fmt.Println(qs.IntValue(oOutput.StatusCode))
+
+	std::shared_ptr<std::iostream> objectStream = std::make_shared<std::stringstream>();
+	*objectStream << "thi is a test";
+	objectStream->flush();
+	input.SetBody(objectStream);
+	input.SetContentLength(strlen("thi is a test"));
 ```
+delete object with key
 
-Delete object
+``` c++
+//When delete object with key "<key>"
+//Then delete object status code is 204
+ScenarioScope<TestObjectCtx> contextObjectTest;
 
-``` go
-oOutput, _ := bucket.DeleteObject("Screenshot.jpg")
+	Bucket qsBucket = *contextObjectTest->pQsBucket;
 
-// Print the HTTP status code.
-// Example: 204
-fmt.Println(qs.IntValue(oOutput.StatusCode))
+	DeleteObjectInput input;
+	ScenarioScope<DeleteObjectOutput> contextOutput;
+
+	QsError err = qsBucket.deleteObject(objectkey, input, *contextOutput);
+//When delete the move object with key "<key>"
+//Then delete the move object status code is 204
+std::string objectkeyToDel = objectkey + "_move";
+
+	ScenarioScope<TestObjectCtx> contextObjectTest;
+
+	Bucket qsBucket = *contextObjectTest->pQsBucket;
+
+	DeleteObjectInput input;
+	ScenarioScope<DeleteObjectOutput> contextOutput;
+
+	QsError err = qsBucket.deleteObject(objectkeyToDel, input, *contextOutput);
 ```
 
 Initialize Multipart Upload
 
-``` go
-aOutput, _ := bucket.InitiateMultipartUpload(
-	"QingCloudInsight.mov",
-	&service.InitiateMultipartUploadInput{
-		ContentType: qs.String("video/quicktime"),
-	},
-)
+``` c++
+//When initiate multipart upload with key "<key>"
+//Then initiate multipart upload status code is 200
+	ScenarioScope<TestListMultipartUploadsCtx> contextMultiPartObjectTest;
+	contextMultiPartObjectTest->bucketName = "testmorvenhuang";
 
-// Print the HTTP status code.
-// Example: 200
-fmt.Println(qs.IntValue(aOutput.StatusCode))
+	QingStor::QsConfig qsConfig;
+	qsConfig.loadConfigFile(strConfigPath);
+	contextMultiPartObjectTest->pQsBucket = new Bucket(qsConfig, "testmorvenhuang", "pek3a");
+	Bucket qsBucket = *contextMultiPartObjectTest->pQsBucket;
 
-// Print the upload ID.
-// Example: "9d37dd6ccee643075ca4e597ad65655c"
-fmt.Println(qs.StringValue(aOutput.UploadID))
+	InitiateMultipartUploadInput input;
+	ScenarioScope<InitiateMultipartUploadOutput> contextOutput;
+
+	//contextGiven->objectKey = objectkey;
 ```
 
 Upload Multipart
 
-``` go
-aOutput, _ := bucket.UploadMultipart(
-	"QingCloudInsight.mov",
-	&service.UploadMultipartInput{
-		UploadID:   qs.String("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
-		PartNumber: qs.Int(0),
-		ContentMD5: qs.String(md5String0),
-		Body:       file0,
-	},
-)
+``` c++
+//When upload the first part with key "<key>"
+//Then upload the first part status code is 201
+	ScenarioScope<TestListMultipartUploadsCtx> contextMultiPartObjectTest;
+	Bucket qsBucket = *contextMultiPartObjectTest->pQsBucket;
 
-// Print the HTTP status code.
-// Example: 201
-fmt.Println(qs.IntValue(aOutput.StatusCode))
+	UploadMultipartInput input;
+	ScenarioScope<UploadMultipartOutput> contextOutput;
 
-aOutput, _ = bucket.UploadMultipart(
-	"QingCloudInsight.mov",
-	&service.UploadMultipartInput{
-		UploadID:   qs.String("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
-		PartNumber: qs.Int(1),
-		ContentMD5: qs.String(md5String1),
-		Body:       file1,
-	},
-)
+	std::shared_ptr<std::iostream> objectStream = std::make_shared<std::stringstream>();
+	*objectStream << " |thi is a Part 1| ";
+	objectStream->flush();
+	input.SetBody(objectStream);
+	input.SetContentLength(strlen(" |thi is a Part 1| "));
+	input.SetPartNumber(1);
+	input.SetUploadID(contextMultiPartObjectTest->uploadID);
+//When upload the second part with key "<key>"
+//Then upload the second part status code is 201
+	ScenarioScope<TestListMultipartUploadsCtx> contextMultiPartObjectTest;
+	Bucket qsBucket = *contextMultiPartObjectTest->pQsBucket;
 
-// Print the HTTP status code.
-// Example: 201
-fmt.Println(qs.IntValue(aOutput.StatusCode))
+	UploadMultipartInput input;
+	ScenarioScope<UploadMultipartOutput> contextOutput;
 
-aOutput, _ = bucket.UploadMultipart(
-	"QingCloudInsight.mov"
-	&service.UploadMultipartInput{
-		UploadID:   qs.String("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
-		PartNumber: qs.Int(2),
-		ContentMD5: qs.String(md5String2),
-		Body:       file2,
-	},
-)
+	std::shared_ptr<std::iostream> objectStream = std::make_shared<std::stringstream>();
+	*objectStream << " |thi is a Part 2| ";
+	objectStream->flush();
+	input.SetBody(objectStream);
+	input.SetContentLength(strlen(" |thi is a Part 2| "));
+	input.SetPartNumber(2);
+	input.SetUploadID(contextMultiPartObjectTest->uploadID);
 
-// Print the HTTP status code.
-// Example: 201
-fmt.Println(qs.IntValue(aOutput.StatusCode))
+//When upload the third part with key "<key>"
+//Then upload the third part status code is 201
+	ScenarioScope<TestListMultipartUploadsCtx> contextMultiPartObjectTest;
+	Bucket qsBucket = *contextMultiPartObjectTest->pQsBucket;
+
+	UploadMultipartInput input;
+	ScenarioScope<UploadMultipartOutput> contextOutput;
+
+	std::shared_ptr<std::iostream> objectStream = std::make_shared<std::stringstream>();
+	*objectStream << " |thi is a Part 3| ";
+	objectStream->flush();
+	input.SetBody(objectStream);
+	input.SetContentLength(strlen(" |thi is a Part 3| "));
+	input.SetPartNumber(3);
+	input.SetUploadID(contextMultiPartObjectTest->uploadID);
 ```
 
 Complete Multipart Upload
 
-``` go
-aOutput, _ := bucket.CompleteMultipartUpload(
-	"QingCloudInsight.mov",
-	&service.CompleteMultipartUploadInput{
-		UploadID:    qs.String("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
-		ObjectParts: []*service.ObjectPart{{
-			PartNumber: qs.Int(0),
-		}, {
-			PartNumber: qs.Int(1),
-		}, {
-			PartNumber: qs.Int(2),
-		}},
-	},
-)
+``` c++
+//When complete multipart upload with key "<key>"
+//Then complete multipart upload status code is 201
+ScenarioScope<TestListMultipartUploadsCtx> contextMultiPartObjectTest;
+	Bucket qsBucket = *contextMultiPartObjectTest->pQsBucket;
 
-// Print the HTTP status code.
-// Example: 200
-fmt.Println(qs.IntValue(aOutput.StatusCode))
+	CompleteMultipartUploadInput input;
+	ScenarioScope<CompleteMultipartUploadOutput> contextOutput;
+	input.SetUploadID(contextMultiPartObjectTest->uploadID);
 ```
 
 Abort Multipart Upload
 
-``` go
-aOutput, err := bucket.AbortMultipartUpload(
-	"QingCloudInsight.mov"
-	&service.AbortMultipartUploadInput{
-		UploadID:  qs.String("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
-	},
-)
+``` c++
+//When abort multipart upload with key "<key>"
+//Then abort multipart upload status code is 400
+ScenarioScope<TestListMultipartUploadsCtx> contextMultiPartObjectTest;
+	Bucket qsBucket = *contextMultiPartObjectTest->pQsBucket;
 
-// Print the error message.
-// Example: QingStor Error: StatusCode 400, Code...
-fmt.Println(err)
+	AbortMultipartUploadInput input;
+	ScenarioScope<AbortMultipartUploadOutput> contextOutput;
+	input.SetUploadID(contextMultiPartObjectTest->uploadID);
+
+	QsError err = qsBucket.abortMultipartUpload(objectkey, input, *contextOutput);
 ```
